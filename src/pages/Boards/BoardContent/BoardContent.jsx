@@ -355,7 +355,11 @@ function BoardContent({ board, createNewColumn, createNewCard, handleSetActiveCa
         bgcolor: (theme) => (theme.palette.mode === 'dark' ? '#34495e' : '#1976d2'),
         width: '100%',
         height: (theme) => theme.trello.boardContentHeight,
-        p: '10px 0'
+        p: '10px 0',
+        backgroundImage: 'url("https://images.unsplash.com/photo-1627389955611-705a6f8bb75d?q=80&w=2070&auto=format&fit=crop")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
       }}>
         <ListColumns 
           columns={columnsToRender} 

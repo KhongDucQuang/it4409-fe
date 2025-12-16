@@ -1,3 +1,4 @@
 // src/utils/constants.js
 // SỬA LẠI CỔNG NÀY:
-export const API_ROOT = 'http://localhost:3000'
+// constants.js
+export const API_ROOT = import.meta.env.VITE_API_ROOT || 'http://localhost:3000'

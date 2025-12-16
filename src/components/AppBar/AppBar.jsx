@@ -18,7 +18,7 @@ import LibraryAddIcon from '@mui/icons-material/LibraryAdd'
 import InputAdornment from '@mui/material/InputAdornment'
 import SearchIcon from '@mui/icons-material/Search'
 import CloseIcon from '@mui/icons-material/Close'
-
+import { Link } from 'react-router-dom'
 import Notifications from './Notifications/Notifications'
 // Import Modal Tạo Board
 import CreateBoardModal from '~/components/Modal/CreateBoardModal/CreateBoardModal'
@@ -45,10 +45,26 @@ function AppBar({ searchValue, setSearchValue }) {
       {/* --- CỘT TRÁI --- */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <AppsIcon sx={{ color: 'white' }} />
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        
+        {/* 👇 ĐÃ SỬA: Bọc Logo và Text bằng Link để chuyển trang */}
+        <Box
+          component={Link}
+          to="/boards" // Đường dẫn về trang danh sách Board
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            textDecoration: 'none', // Bỏ gạch chân
+            color: 'white',
+            '&:hover': { opacity: 0.8 }
+          }}
+        >
           <SvgIcon component={TrelloIcon} fontSize='small' inheritViewBox sx={{ color: 'white' }} />
-          <Typography varient="span" sx={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'white' }}>Trello</Typography>
+          <Typography variant="span" sx={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'white' }}>
+            Trello
+          </Typography>
         </Box>
+        {/* 👆 KẾT THÚC SỬA */}
 
         <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
           <Workspaces />

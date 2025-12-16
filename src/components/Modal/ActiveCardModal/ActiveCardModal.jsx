@@ -22,6 +22,12 @@ import {
 } from '~/apis/cardApi';
 import LinearProgress from '@mui/material/LinearProgress'; // Thanh tiến độ
 import { socket } from '~/socket'
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import { toggleLabelAPI } from '~/apis' // Import hàm vừa viết
+
+const LABEL_COLORS = [
+  '#61bd4f', '#f2d600', '#ff9f1a', '#eb5a46', '#c377e0', '#0079bf'
+]
 
 const style = {
   position: 'absolute',
@@ -38,7 +44,7 @@ const style = {
   overflowY: 'auto'
 }
 
-function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
+function ActiveCardModal({ activeCard, setActiveCard, isOpen, onClose, boardMembers }) {
   const [comment, setComment] = useState('')
   const [description, setDescription] = useState(activeCard?.description || '')
   const [checklistIdOpenForm, setChecklistIdOpenForm] = useState(null) // Lưu ID của checklist đang mở form
@@ -55,6 +61,7 @@ function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
       setDescription(activeCard?.description || '')
   }, [activeCard])
   const fileInputRef = useRef(null)
+  const [anchorElLabel, setAnchorElLabel] = useState(null)
 
   if (!activeCard) return null
 
@@ -147,17 +154,49 @@ function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
     }
   }
 
+  // 3. Hàm xử lý logic Toggle
+  const handleToggleLabel = async (color) => {
+    try {
+      // Gọi API
+      const updatedCard = await toggleLabelAPI({
+        cardId: activeCard._id,
+        boardId: activeCard.boardId,
+        color: color,
+        name: '' // Tên label để trống (hoặc sau này làm tính năng sửa tên)
+      })
+
+      // Cập nhật State (Quan trọng: Backend trả về cấu trúc lồng nhau)
+      // updatedCard.labels là mảng các object LabelsOnCards
+      setActiveCard(prev => ({
+        ...prev,
+        labels: updatedCard.labels 
+      }))
+
+      // Bắn Socket
+      socket.emit('FE_UPDATE_BOARD', { boardId: activeCard.boardId })
+
+    } catch (error) {
+      console.error('Lỗi toggle label:', error)
+      toast.error('Lỗi cập nhật nhãn')
+    }
+  }
+
+  // 4. Các hàm mở/đóng Popover đơn giản
+  const handleLabelClick = (event) => setAnchorElLabel(event.currentTarget)
+  const handleCloseLabel = () => setAnchorElLabel(null)
+
   // --- XỬ LÝ ATTACHMENT ---
   const handleUploadAttachment = async (event) => {
     const file = event.target.files[0]
     if (!file) return
     try {
       const newAttachment = await createAttachmentAPI(activeCard._id, file)
-      if (!activeCard.attachments) activeCard.attachments = []
-      activeCard.attachments.push(newAttachment)
+      setActiveCard(prev => ({
+        ...prev,
+        attachments: [newAttachment, ...(prev.attachments || [])]
+      }))
       toast.success('Upload file thành công!')
       event.target.value = ''
-      setComment(prev => prev)
       
       // ✅
       socket.emit('FE_UPDATE_BOARD', { boardId: activeCard.boardId });
@@ -313,92 +352,194 @@ function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
      }
   }
 
-  return (
-    <Modal open={isOpen} onClose={onClose}>
-      <Box sx={style}>
-        {/* HEADER: Title & Close Button */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '80%' }}>
-            <CreditCardIcon sx={{ color: '#172b4d' }} />
-            
-            {/* Cho phép sửa Title ngay tại đây */}
-            <TextField
-                fullWidth
-                variant="standard"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={handleUpdateTitle} // Lưu khi click ra ngoài
-                InputProps={{
-                    disableUnderline: true,
-                    style: { fontSize: '1.25rem', fontWeight: 'bold', color: '#172b4d' }
-                }}
-                sx={{
-                    '& .MuiInputBase-input': {
-                        p: 0.5,
-                        borderRadius: 1,
-                        '&:focus': { bgcolor: 'white', border: '1px solid primary.main' }
-                    }
-                }}
-            />
-          </Box>
-          <CloseIcon onClick={onClose} sx={{ cursor: 'pointer', color: '#5e6c84' }} />
-        </Box>
+  // Style cho Modal chính (Bạn có thể đặt cái này ở ngoài component hoặc trong file này đều được)
+  const modalStyle = {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: 900, // Rộng hơn một chút cho thoáng
+    maxWidth: '95vw',
+    maxHeight: '90vh',
+    bgcolor: '#ffffff', // Nền trắng tuyệt đối
+    boxShadow: 24,
+    borderRadius: '12px', // Bo góc mềm mại
+    outline: 'none',
+    overflowY: 'auto', // Scroll nội dung nếu dài
+    p: 0 // Padding xử lý bên trong
+  }
 
-        <Grid container spacing={4}>
-          {/* CỘT TRÁI */}
-          <Grid item xs={9}>
-            {/* Members & Labels */}
-            <Box sx={{ mb: 3, display: 'flex', gap: 4 }}>
-              {activeCard?.assignees?.length > 0 && (
-                <Box>
-                   <Typography variant="caption" fontWeight="bold" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Members</Typography>
-                   <AvatarGroup max={4} sx={{ justifyContent: 'flex-start' }}>
-                    {activeCard.assignees.map((assignee, index) => (
-                      <Avatar key={index} alt={assignee.user?.name} src={assignee.user?.avatarUrl} sx={{ width: 32, height: 32 }} />
-                    ))}
-                  </AvatarGroup>
-                </Box>
-              )}
+  // --- PHẦN RETURN ---
+  return (
+    <Modal 
+      open={isOpen} 
+      onClose={onClose}
+      sx={{
+        '& .MuiBackdrop-root': {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)', // Làm tối nền sau
+            backdropFilter: 'blur(4px)' // Làm mờ nền sau (hiệu ứng kính)
+        }
+      }}
+    >
+      <Box sx={modalStyle}>
+        
+        {/* --- 1. HEADER VÙNG TIÊU ĐỀ --- */}
+        <Box sx={{ 
+            p: 3, 
+            pb: 1, 
+            position: 'sticky', 
+            top: 0, 
+            bgcolor: 'white', 
+            zIndex: 10,
+            borderBottom: '1px solid #e0e0e0' // Gạch ngang nhẹ ngăn cách header
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            {/* Title Input */}
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, width: '90%' }}>
+              <CreditCardIcon sx={{ color: '#172b4d', mt: 0.5 }} />
+              <Box sx={{ width: '100%' }}>
+                  <TextField
+                    fullWidth
+                    multiline // Cho phép tiêu đề dài xuống dòng
+                    variant="standard"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    onBlur={handleUpdateTitle}
+                    InputProps={{
+                        disableUnderline: true,
+                        style: { fontSize: '1.25rem', fontWeight: 'bold', color: '#172b4d' }
+                    }}
+                    sx={{
+                        '& .MuiInputBase-input': {
+                            p: 0.5,
+                            borderRadius: 1,
+                            transition: 'all 0.2s',
+                            border: '2px solid transparent',
+                            '&:focus': { bgcolor: 'white', borderColor: '#1976d2' } // Focus có viền xanh
+                        }
+                    }}
+                  />
+                  {/* <Typography variant="caption" sx={{ color: 'text.secondary', ml: 0.5 }}>
+                    in list <Typography component="span" variant="caption" fontWeight="bold">Checklist</Typography>
+                  </Typography> */}
+              </Box>
             </Box>
 
-            {/* Description */}
+            {/* Close Button */}
+            <Box 
+                onClick={onClose}
+                sx={{ 
+                    cursor: 'pointer', 
+                    color: '#5e6c84', 
+                    p: 1, 
+                    borderRadius: '50%',
+                    '&:hover': { bgcolor: '#091e420a', color: '#172b4d' } 
+                }}
+            >
+                <CloseIcon />
+            </Box>
+          </Box>
+        </Box>
+
+        {/* --- 2. BODY CONTENT --- */}
+        <Grid container spacing={0} sx={{ p: 3 }}>
+          
+          {/* === CỘT TRÁI (NỘI DUNG CHÍNH) === */}
+          <Grid item xs={12} md={9} sx={{ pr: { md: 3 } }}>
+            
+            {/* Members Section */}
+            {activeCard?.assignees?.length > 0 && (
+              <Box sx={{ mb: 4, ml: 4 }}>
+                  <Typography variant="caption" fontWeight="bold" color="text.secondary" sx={{ display: 'block', mb: 1, textTransform: 'uppercase', fontSize: '11px' }}>Members</Typography>
+                  <AvatarGroup max={4} sx={{ justifyContent: 'flex-start', '& .MuiAvatar-root': { width: 32, height: 32, border: 'none' } }}>
+                    {activeCard.assignees.map((assignee, index) => (
+                      <Avatar key={index} alt={assignee.user?.name} src={assignee.user?.avatarUrl} />
+                    ))}
+                  </AvatarGroup>
+              </Box>
+            )}
+
+            {/* 👇👇👇 CHÈN VỊ TRÍ 1 VÀO ĐÂY (NGAY DƯỚI TITLE) 👇👇👇 */}
+            <div style={{ display: 'flex', gap: '8px', margin: '10px 0 20px 0', flexWrap: 'wrap' }}>
+              {activeCard?.labels?.map((item) => {
+                const labelData = item.label 
+                if (!labelData) return null
+
+                return (
+                  <div
+                    key={labelData.id}
+                    style={{
+                      backgroundColor: labelData.color,
+                      width: '40px',
+                      height: '32px',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                    title={labelData.name}
+                  />
+                )
+              })}
+            </div>
+            {/* 👆👆👆 KẾT THÚC VỊ TRÍ 1 👆👆👆 */}
+
+            {/* Description Section */}
             <Box sx={{ mb: 4 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                 <SubjectIcon sx={{ color: '#172b4d' }} />
                 <Typography variant="h6" fontSize="1rem" fontWeight="bold" sx={{ color: '#172b4d' }}>Description</Typography>
               </Box>
-              <TextField
-                fullWidth multiline minRows={3}
-                placeholder="Add a more detailed description..."
-                variant="outlined"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                onBlur={handleUpdateDescription}
-                sx={{ bgcolor: '#091e420a', '& fieldset': { border: 'none' }, borderRadius: 1 }}
-              />
+              
+              <Box sx={{ ml: 4 }}>
+                  <TextField
+                    fullWidth multiline minRows={3}
+                    placeholder="Add a more detailed description..."
+                    variant="outlined"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    onBlur={handleUpdateDescription}
+                    sx={{
+                        '& .MuiOutlinedInput-root': {
+                            bgcolor: '#f4f5f7', // Nền xám nhẹ
+                            '& fieldset': { border: 'none' }, // Bỏ viền đen
+                            '&:hover fieldset': { border: 'none' },
+                            '&.Mui-focused': { bgcolor: 'white', boxShadow: 'inset 0 0 0 2px #1976d2' } // Focus nền trắng + viền xanh
+                        }
+                    }}
+                  />
+              </Box>
             </Box>
 
-             {/* Attachments List */}
-             {activeCard?.attachments?.length > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            {/* Attachments Section */}
+            {activeCard?.attachments?.length > 0 && (
+              <Box sx={{ mb: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                   <AttachmentIcon sx={{ color: '#172b4d' }} />
                   <Typography variant="h6" fontSize="1rem" fontWeight="bold" sx={{ color: '#172b4d' }}>Attachments</Typography>
                 </Box>
-                <Stack spacing={2}>
+                <Stack spacing={2} sx={{ ml: 4 }}>
                   {activeCard.attachments.map((att) => (
-                    <Box key={att.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1, border: '1px solid #ddd', borderRadius: 1 }}>
-                      <Box sx={{ width: 80, height: 60, borderRadius: 1, overflow: 'hidden', bgcolor: '#f4f5f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                         {att.mimeType.includes('image') 
-                           ? <img src={`${API_ROOT}/${att.url}`} alt="att" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                           : <AttachmentIcon sx={{ color: 'text.secondary' }} />
-                         }
+                    <Box key={att.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, '&:hover': { bgcolor: '#f4f5f7' }, p: 1, borderRadius: 1, cursor: 'pointer' }}>
+                      {/* Thumbnail */}
+                      <Box sx={{ 
+                          width: 80, height: 60, borderRadius: 1, overflow: 'hidden', 
+                          bgcolor: '#e9e9e9', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                      }}>
+                          {att.mimeType.includes('image') 
+                            ? <img src={`${API_ROOT}/${att.url}`} alt="att" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <InsertDriveFileIcon sx={{ color: '#5e6c84', fontSize: 30 }} />
+                          }
                       </Box>
+                      {/* Info */}
                       <Box>
-                        <Typography variant="subtitle2" fontWeight="bold">{att.fileName}</Typography>
-                        <Typography variant="caption" color="text.secondary">{new Date(att.uploadedAt).toLocaleString()}</Typography>
-                        <Box sx={{ mt: 0.5 }}>
-                          <a href={`${API_ROOT}/${att.url}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', fontWeight: 'bold', textDecoration: 'none', color: '#172b4d' }}>Download / Open</a>
+                        <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#172b4d' }}>{att.fileName}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="caption" color="text.secondary">{new Date(att.uploadedAt).toLocaleDateString()}</Typography>
+                            <Typography variant="caption" color="text.secondary">•</Typography>
+                            <a href={`${API_ROOT}/${att.url}`} target="_blank" rel="noreferrer" 
+                               style={{ fontSize: '12px', fontWeight: 'bold', textDecoration: 'none', color: '#172b4d', borderBottom: '1px solid #172b4d' }}
+                            >
+                                Download
+                            </a>
                         </Box>
                       </Box>
                     </Box>
@@ -407,112 +548,102 @@ function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
               </Box>
             )}
 
-            {/* ... Attachments List (Code cũ) ... */}
-
-            {/* --- CHECKLIST AREA (Bước 3 - UI) --- */}
+            {/* Checklists Section */}
             {activeCard?.checklists?.length > 0 && activeCard.checklists.map(checklist => {
-              const totalItems = checklist.items?.length || 0;
-              const completedItems = checklist.items?.filter(i => i.isCompleted)?.length || 0;
-              const progress = totalItems === 0 ? 0 : (completedItems / totalItems) * 100;
+              const totalItems = checklist.items?.length || 0
+              const completedItems = checklist.items?.filter(i => i.isCompleted)?.length || 0
+              const progress = totalItems === 0 ? 0 : (completedItems / totalItems) * 100
 
               return (
-                <Box key={checklist.id} sx={{ mb: 3 }}>
-                  {/* Header Checklist */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box key={checklist.id} sx={{ mb: 4 }}>
+                  {/* Checklist Header */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <TaskAltIcon sx={{ color: '#172b4d' }} />
                       <Typography variant="h6" fontSize="1rem" fontWeight="bold" sx={{ color: '#172b4d' }}>
                         {checklist.title}
                       </Typography>
                     </Box>
-                    <Button size="small" color="error" onClick={() => handleDeleteChecklist(checklist.id)}>Delete</Button>
+                    <Button 
+                        size="small" 
+                        sx={{ bgcolor: '#091e420a', color: '#172b4d', fontWeight: 'bold', '&:hover': { bgcolor: '#dfe1e6' } }}
+                        onClick={() => handleDeleteChecklist(checklist.id)}
+                    >
+                        Delete
+                    </Button>
                   </Box>
 
                   {/* Progress Bar */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Typography variant="caption" sx={{ minWidth: 30 }}>{Math.round(progress)}%</Typography>
-                    <LinearProgress variant="determinate" value={progress} sx={{ width: '100%', borderRadius: 4, height: 8 }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, ml: 4 }}>
+                    <Typography variant="caption" sx={{ minWidth: 30, color: 'text.secondary', fontWeight: 'bold' }}>{Math.round(progress)}%</Typography>
+                    <LinearProgress 
+                        variant="determinate" 
+                        value={progress} 
+                        sx={{ 
+                            width: '100%', borderRadius: 4, height: 8, 
+                            bgcolor: '#091e420a',
+                            '& .MuiLinearProgress-bar': { bgcolor: progress === 100 ? '#4bce97' : '#579dff' } // Xanh lá khi xong 100%
+                        }} 
+                    />
                   </Box>
 
-                  {/* List Items */}
-                  <Stack spacing={1} sx={{ mb: 2 }}>
+                  {/* Checklist Items */}
+                  <Stack spacing={1} sx={{ mb: 2, ml: 4 }}>
                     {checklist.items?.map(item => (
-                      <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box key={item.id} sx={{ 
+                          display: 'flex', alignItems: 'center', gap: 1, 
+                          '&:hover .delete-icon': { opacity: 1 } // Hiện nút xoá khi hover
+                      }}>
                         <Checkbox 
                           checked={item.isCompleted} 
                           onChange={() => handleToggleItem(item.id, item.isCompleted)}
-                          sx={{ p: 0.5 }}
+                          sx={{ p: 0.5, '&.Mui-checked': { color: '#4bce97' } }}
                         />
                         <TextField
                           fullWidth variant="standard" value={item.content}
-                          InputProps={{ disableUnderline: true, readOnly: true }} // Tạm thời readOnly
+                          InputProps={{ disableUnderline: true, readOnly: true }}
                           sx={{ 
                              textDecoration: item.isCompleted ? 'line-through' : 'none',
-                             color: item.isCompleted ? 'text.secondary' : 'text.primary'
+                             color: item.isCompleted ? 'text.secondary' : 'text.primary',
+                             '& .MuiInputBase-input': { fontSize: '0.95rem' }
                           }}
                         />
-                         <CloseIcon fontSize="small" sx={{ cursor: 'pointer', color: '#ddd', '&:hover': { color: 'error.main' } }} onClick={() => handleDeleteItem(item.id)} />
+                         <Box className="delete-icon" sx={{ opacity: 0, transition: 'opacity 0.2s' }}>
+                            <CloseIcon 
+                                fontSize="small" 
+                                sx={{ cursor: 'pointer', color: '#5e6c84', '&:hover': { color: '#cf3e3e' } }} 
+                                onClick={() => handleDeleteItem(item.id)} 
+                            />
+                         </Box>
                       </Box>
                     ))}
                   </Stack>
 
-                  {/* Add New Item Button */}
-                  {/* Form thêm item mới (Thay thế cho nút Add cũ) */}
-                  <Box sx={{ pl: 4 }}>
+                  {/* Add New Item Form */}
+                  <Box sx={{ ml: 4 }}>
                     {checklistIdOpenForm !== checklist.id ? (
-                      // 1. Trạng thái bình thường: Hiển thị nút "Add an item"
                       <Button 
                         variant="contained" size="small"
-                        sx={{ bgcolor: '#091e420a', color: '#172b4d', boxShadow: 'none', '&:hover': { bgcolor: '#091e4214' } }}
+                        sx={{ bgcolor: '#091e420a', color: '#172b4d', boxShadow: 'none', fontWeight: 'bold', '&:hover': { bgcolor: '#091e4214', boxShadow: 'none' } }}
                         onClick={() => setChecklistIdOpenForm(checklist.id)}
                       >
                         Add an item
                       </Button>
                     ) : (
-                      // 2. Trạng thái đang nhập: Hiển thị Form Input
-                      <Box>
+                      <Box sx={{ animation: 'fadeIn 0.2s' }}>
                         <TextField
-                          fullWidth
-                          autoFocus
-                          multiline
-                          placeholder="Thêm một mục..."
+                          fullWidth autoFocus multiline placeholder="Add an item..."
                           value={newItemContent}
                           onChange={(e) => setNewItemContent(e.target.value)}
-                          onKeyDown={(e) => {
-                             if (e.key === 'Enter' && !e.shiftKey) { // Enter để submit
-                               e.preventDefault()
-                               handleAddItemSubmit(checklist.id)
-                             }
-                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddItemSubmit(checklist.id) }}}
                           sx={{ 
-                            '& .MuiOutlinedInput-root': {
-                              bgcolor: (theme) => theme.palette.mode === 'dark' ? '#33485D' : 'white',
-                              '& fieldset': { borderColor: 'primary.main' },
-                              '&:hover fieldset': { borderColor: 'primary.main' },
-                              '&.Mui-focused fieldset': { borderColor: 'primary.main', borderWidth: '2px' }
-                            },
+                            '& .MuiOutlinedInput-root': { bgcolor: 'white', '& fieldset': { borderColor: '#1976d2' } },
                             mb: 1
                           }}
                         />
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Button 
-                            variant="contained" 
-                            onClick={() => handleAddItemSubmit(checklist.id)}
-                            sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }}
-                          >
-                            Thêm
-                          </Button>
-                          <Button 
-                            variant="text" 
-                            size="small"
-                            sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
-                            onClick={() => {
-                              setChecklistIdOpenForm(null)
-                              setNewItemContent('')
-                            }}
-                          >
-                            Huỷ
-                          </Button>
+                          <Button variant="contained" onClick={() => handleAddItemSubmit(checklist.id)}>Add</Button>
+                          <Button variant="text" size="small" sx={{ color: '#172b4d' }} onClick={() => { setChecklistIdOpenForm(null); setNewItemContent('') }}>Cancel</Button>
                         </Box>
                       </Box>
                     )}
@@ -520,53 +651,80 @@ function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
                 </Box>
               )
             })}
-            
-            {/* Activity & Comments (Code cũ) */}
 
-            {/* Activity & Comments */}
+            {/* Activity / Comments Section */}
             <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
                 <DescriptionIcon sx={{ color: '#172b4d' }} />
                 <Typography variant="h6" fontSize="1rem" fontWeight="bold" sx={{ color: '#172b4d' }}>Activity</Typography>
               </Box>
-              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-                <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>Me</Avatar>
-                <Box sx={{ width: '100%' }}>
-                  <TextField fullWidth placeholder="Write a comment..." size="small" value={comment} onChange={(e) => setComment(e.target.value)} sx={{ mb: 1 }} />
-                  <Button variant="contained" size="small" disabled={!comment} onClick={handleAddComment}>Save</Button>
+              
+              <Box sx={{ ml: 4 }}>
+                {/* Input Comment */}
+                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                    <Avatar sx={{ width: 32, height: 32, bgcolor: '#dfe1e6', color: '#172b4d', fontSize: '14px' }}>Me</Avatar>
+                    <Box sx={{ width: '100%' }}>
+                    <TextField 
+                        fullWidth placeholder="Write a comment..." size="small" 
+                        value={comment} onChange={(e) => setComment(e.target.value)} 
+                        sx={{ 
+                            mb: 1,
+                            '& .MuiOutlinedInput-root': { bgcolor: 'white', '&.Mui-focused fieldset': { borderColor: '#1976d2' } }
+                        }} 
+                    />
+                    <Button variant="contained" size="small" disabled={!comment} onClick={handleAddComment} sx={{ textTransform: 'none' }}>Save</Button>
+                    </Box>
                 </Box>
-              </Box>
-              <Stack spacing={2}>
-                {activeCard?.comments?.map((comment) => (
-                   <Box key={comment.id} sx={{ display: 'flex', gap: 2 }}>
-                      <Avatar alt={comment.user?.name} src={comment.user?.avatarUrl} sx={{ width: 32, height: 32 }} />
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight="bold" sx={{ mr: 1, display: 'inline-block' }}>{comment.user?.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{new Date(comment.createdAt).toLocaleString()}</Typography>
-                        <Box sx={{ p: 1, bgcolor: (theme) => theme.palette.mode === 'dark' ? '#33485D' : '#f4f5f7', borderRadius: 1, mt: 0.5 }}>
-                           <Typography variant="body2" color="text.primary">{comment.content}</Typography>
+
+                {/* List Comments */}
+                <Stack spacing={2}>
+                    {activeCard?.comments?.map((comment) => (
+                        <Box key={comment.id} sx={{ display: 'flex', gap: 2 }}>
+                        <Avatar alt={comment.user?.name} src={comment.user?.avatarUrl} sx={{ width: 32, height: 32 }} />
+                        <Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#172b4d' }}>{comment.user?.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">{new Date(comment.createdAt).toLocaleString()}</Typography>
+                            </Box>
+                            <Box sx={{ p: 1.5, bgcolor: 'white', border: '1px solid #dfe1e6', borderRadius: 2, mt: 0.5, boxShadow: '0 1px 2px rgba(9, 30, 66, 0.08)' }}>
+                                <Typography variant="body2" color="#172b4d">{comment.content}</Typography>
+                            </Box>
                         </Box>
-                      </Box>
-                   </Box>
-                ))}
-              </Stack>
+                        </Box>
+                    ))}
+                </Stack>
+              </Box>
             </Box>
           </Grid>
 
-          {/* CỘT PHẢI - ACTIONS */}
-          <Grid item xs={3}>
-            <Typography variant="caption" fontWeight="bold" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Add to card</Typography>
+          {/* === CỘT PHẢI (SIDEBAR ACTIONS) === */}
+          <Grid item xs={12} md={3} sx={{ mt: { xs: 4, md: 0 } }}>
+            <Typography variant="caption" fontWeight="bold" color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', fontSize: '11px' }}>Add to card</Typography>
+            
             <Stack direction="column" spacing={1}>
-              <Button variant="contained" color="inherit" startIcon={<GroupIcon />} onClick={handleMemberClick} sx={{ justifyContent: 'flex-start', bgcolor: '#091e420a', boxShadow: 'none' }}>Members</Button>
+              {/* Member Button */}
+              <Button 
+                variant="contained" 
+                startIcon={<GroupIcon />} 
+                onClick={handleMemberClick} 
+                sx={{ 
+                    justifyContent: 'flex-start', 
+                    bgcolor: '#091e420a', color: '#172b4d', boxShadow: 'none', fontWeight: 'bold', 
+                    '&:hover': { bgcolor: '#091e4214', boxShadow: 'none' } 
+                }}
+              >
+                Members
+              </Button>
               <Popover open={openMembers} anchorEl={anchorElMembers} onClose={handleCloseMembers} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
-                <Box sx={{ p: 2, width: 250 }}>
-                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Assign members</Typography>
+                <Box sx={{ p: 2, width: 280 }}>
+                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, textAlign: 'center' }}>Assign members</Typography>
+                  <Divider sx={{ mb: 1 }}/>
                   <List dense>
                     {boardMembers?.map(member => {
                       const isAssigned = activeCard.assignees?.some(a => a.userId === member.user.id)
                       return (
                         <ListItem key={member.id} disablePadding>
-                          <ListItemButton onClick={() => handleToggleMember(member.user.id)}>
+                          <ListItemButton onClick={() => handleToggleMember(member.user.id)} sx={{ borderRadius: 1 }}>
                             <ListItemAvatar><Avatar alt={member.user.name} src={member.user.avatarUrl} sx={{ width: 28, height: 28 }} /></ListItemAvatar>
                             <ListItemText primary={member.user.name} />
                             <Checkbox edge="end" checked={!!isAssigned} />
@@ -578,14 +736,105 @@ function ActiveCardModal({ activeCard, isOpen, onClose, boardMembers }) {
                 </Box>
               </Popover>
 
-              <Button variant="contained" color="inherit" startIcon={<LocalOfferIcon />} sx={{ justifyContent: 'flex-start', bgcolor: '#091e420a', boxShadow: 'none' }}>Labels</Button>
-              <Button variant="contained" color="inherit" startIcon={<TaskAltIcon />} onClick={handleAddChecklist} sx={{ justifyContent: 'flex-start', bgcolor: '#091e420a', boxShadow: 'none' }}>Checklist</Button>
+              {/* Other Actions Buttons */}
+              {/* --- LABELS BUTTON & POPOVER --- */}
+              <Button 
+                  variant="contained" 
+                  startIcon={<LocalOfferIcon />} 
+                  onClick={handleLabelClick} // 👈 1. Thêm sự kiện Click mở Popover
+                  sx={{ 
+                      justifyContent: 'flex-start', 
+                      bgcolor: '#091e420a', 
+                      color: '#172b4d', 
+                      boxShadow: 'none', 
+                      fontWeight: 'bold', 
+                      '&:hover': { bgcolor: '#091e4214', boxShadow: 'none' } 
+                  }}
+              >
+                  Labels
+              </Button>
+
+              {/* 👇 2. THÊM POPOVER CHỌN MÀU Ở ĐÂY 👇 */}
+              <Popover
+                  open={Boolean(anchorElLabel)}
+                  anchorEl={anchorElLabel}
+                  onClose={handleCloseLabel}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              >
+                  <Box sx={{ p: 2, width: 250 }}>
+                      <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Labels</Typography>
+                      
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                          {LABEL_COLORS.map((color) => {
+                              // Kiểm tra xem card đã có màu này chưa (structure: labels -> label -> color)
+                              const isActive = activeCard?.labels?.some(item => item.label?.color === color)
+
+                              return (
+                                  <Box
+                                      key={color}
+                                      onClick={() => handleToggleLabel(color)}
+                                      sx={{
+                                          width: '100%',
+                                          height: '32px',
+                                          bgcolor: color,
+                                          borderRadius: 1,
+                                          cursor: 'pointer',
+                                          position: 'relative',
+                                          transition: 'opacity 0.2s',
+                                          '&:hover': { opacity: 0.8 }
+                                      }}
+                                  >
+                                      {isActive && (
+                                          <Box 
+                                              component="span" 
+                                              sx={{ 
+                                                  position: 'absolute', 
+                                                  right: 8, 
+                                                  top: 6, 
+                                                  color: 'white', 
+                                                  fontWeight: 'bold',
+                                                  fontSize: '14px'
+                                              }}
+                                          >
+                                              ✓
+                                          </Box>
+                                      )}
+                                  </Box>
+                              )
+                          })}
+                      </Box>
+                  </Box>
+              </Popover>
+              {/* --- END LABELS SECTION --- */}
+              
+              <Button 
+                variant="contained" startIcon={<TaskAltIcon />} onClick={handleAddChecklist} 
+                sx={{ justifyContent: 'flex-start', bgcolor: '#091e420a', color: '#172b4d', boxShadow: 'none', fontWeight: 'bold', '&:hover': { bgcolor: '#091e4214', boxShadow: 'none' } }}
+              >
+                Checklist
+              </Button>
               
               <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleUploadAttachment} />
-              <Button variant="contained" color="inherit" startIcon={<AttachmentIcon />} onClick={() => fileInputRef.current.click()} sx={{ justifyContent: 'flex-start', bgcolor: '#091e420a', boxShadow: 'none' }}>Attachment</Button>
+              <Button 
+                variant="contained" startIcon={<AttachmentIcon />} onClick={() => fileInputRef.current.click()} 
+                sx={{ justifyContent: 'flex-start', bgcolor: '#091e420a', color: '#172b4d', boxShadow: 'none', fontWeight: 'bold', '&:hover': { bgcolor: '#091e4214', boxShadow: 'none' } }}
+              >
+                Attachment
+              </Button>
 
               <Divider sx={{ my: 2 }} />
-              <Button variant="contained" color="error" startIcon={<DeleteIcon />} onClick={handleDeleteCard} sx={{ justifyContent: 'flex-start', boxShadow: 'none' }}>Delete</Button>
+              
+              {/* Delete Button - Khác biệt màu sắc */}
+              <Button 
+                variant="contained" startIcon={<DeleteIcon />} onClick={handleDeleteCard} 
+                sx={{ 
+                    justifyContent: 'flex-start', 
+                    bgcolor: '#ffeaea', color: '#c9372c', boxShadow: 'none', fontWeight: 'bold', 
+                    '&:hover': { bgcolor: '#ffdce0', boxShadow: 'none' } 
+                }}
+              >
+                Delete
+              </Button>
             </Stack>
           </Grid>
         </Grid>

@@ -193,6 +193,7 @@ function Board() {
       {/* Hiển thị Modal Active Card */}
       <ActiveCardModal 
         activeCard={activeCard}
+        setActiveCard={setActiveCard}
         isOpen={isShowModalActiveCard}
         onClose={handleCloseModal}
         boardMembers={board?.members} 

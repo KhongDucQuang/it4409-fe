@@ -12,10 +12,9 @@ function Register() {
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
   
-  const navigate = useNavigate() // Hook để chuyển trang
+  const navigate = useNavigate() 
 
   const handleRegister = async () => {
-    // 1. Validate mật khẩu xác nhận
     if (password !== confirmPassword) {
       setError('Mật khẩu xác nhận không khớp!')
       return
@@ -27,13 +26,13 @@ function Register() {
     setError(null)
 
     try {
-      // 2. Gọi API đăng ký
+      // Gọi API đăng ký
       await registerAPI({ email, password, name })
       
-      // 3. Thông báo thành công
+      // Thông báo thành công
       toast.success('Đăng ký thành công! Hãy đăng nhập.')
       
-      // 4. Chuyển hướng về trang Login
+      // Chuyển hướng về trang Login
       navigate('/login')
 
     } catch (err) {
@@ -44,48 +43,113 @@ function Register() {
   }
 
   return (
-    <Container maxWidth="xs">
-      <Box sx={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography component="h1" variant="h5">
-          Đăng ký tài khoản
-        </Typography>
-        
-        <Box component="form" sx={{ mt: 1 }}>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          
-          <TextField
-            margin="normal" required fullWidth label="Full Name" autoFocus
-            value={name} onChange={(e) => setName(e.target.value)}
-          />
-          <TextField
-            margin="normal" required fullWidth label="Email Address"
-            value={email} onChange={(e) => setEmail(e.target.value)}
-          />
-          <TextField
-            margin="normal" required fullWidth label="Password" type="password"
-            value={password} onChange={(e) => setPassword(e.target.value)}
-          />
-          <TextField
-            margin="normal" required fullWidth label="Confirm Password" type="password"
-            value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-          />
-          
-          <Button fullWidth variant="contained" sx={{ mt: 3, mb: 2 }} onClick={handleRegister}>
-            Đăng ký
-          </Button>
-          
-          {/* Link quay lại trang Login nếu lỡ bấm nhầm */}
-          <Box sx={{ textAlign: 'center' }}>
-             <Link to="/login" style={{ textDecoration: 'none' }}>
-                <Typography variant="body2" color="primary">
-                  Đã có tài khoản? Đăng nhập ngay
-                </Typography>
-             </Link>
-          </Box>
+  <Container maxWidth="xs">
+    <Box
+      sx={{
+        marginTop: 10,
+        padding: 4,
+        borderRadius: 3,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        backgroundColor: '#fff',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center'
+      }}
+    >
+      <Typography
+        component="h1"
+        variant="h5"
+        sx={{ fontWeight: 600, mb: 1 }}
+      >
+        Đăng ký
+      </Typography>
+
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Tạo tài khoản Trello 
+      </Typography>
+
+      <Box component="form" sx={{ width: '100%' }} noValidate>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        <TextField
+          label="Họ và tên"
+          fullWidth
+          required
+          autoFocus
+          margin="normal"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+
+        <TextField
+          label="Email"
+          fullWidth
+          required
+          margin="normal"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+
+        <TextField
+          label="Mật khẩu"
+          type="password"
+          fullWidth
+          required
+          margin="normal"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+
+        <TextField
+          label="Xác nhận mật khẩu"
+          type="password"
+          fullWidth
+          required
+          margin="normal"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+
+        <Button
+          fullWidth
+          variant="contained"
+          size="large"
+          sx={{
+            mt: 3,
+            mb: 2,
+            py: 1.2,
+            fontWeight: 600,
+            borderRadius: 2
+          }}
+          onClick={handleRegister}
+        >
+          Đăng ký
+        </Button>
+
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="body2">
+            Đã có tài khoản?{' '}
+            <Link
+              to="/login"
+              style={{ textDecoration: 'none', fontWeight: 600 }}
+            >
+              Đăng nhập ngay
+            </Link>
+          </Typography>
         </Box>
       </Box>
-    </Container>
-  )
+    </Box>
+  </Container>
+)
+
 }
 
 export default Register
